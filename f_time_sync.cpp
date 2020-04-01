@@ -106,10 +106,7 @@ void f_time_sync::destroy_run()
 }
 
 bool f_time_sync::proc()
-{
-  if(m_verb)
-    cout << m_time_str << endl;
-  
+{ 
   // client
   // TRN->WAI->
   //    ->FIX->SLP->TRN
@@ -229,7 +226,6 @@ bool f_time_sync::stwai()
 	    mode = SLP;
 #ifdef DEBUG_F_TIME_SYNC
 	    cout << "Next request is set as Tnext: " <<  m_tnext_adj << endl;
-	    cout << "Move to RCV mode" << endl;
 #endif
 	    break;
 	  }else{
@@ -294,7 +290,7 @@ bool f_time_sync::strcv()
 {
   timeval to;
   to.tv_sec = 0;
-  to.tv_usec = 0;
+  to.tv_usec = 10000;
   fd_set fdrd, fder;
   FD_ZERO(&fdrd);
   FD_ZERO(&fder);
@@ -336,7 +332,12 @@ bool f_time_sync::strep()
   m_trpkt.ts2 = get_time();
   m_trpkt.del = 0;
 
-#ifdef DEBUG_F_TIME_SYNC 
+  if(m_verb){
+    spdlog::info("[{}] Replying for id {} at {}.",
+		 get_name(), m_trpkt.id, m_trpkt.ts2);
+  }
+#ifdef DEBUG_F_TIME_SYNC
+  
   cout << "Replying tsync request id: " << m_trpkt.id
        << " tc1: " << m_trpkt.tc1
        << " ts1: " << m_trpkt.ts1
@@ -364,16 +365,18 @@ bool f_time_sync::stfix()
   if(m_ch_time_sync){
     m_ch_time_sync->set_time_delta(get_time(), delta);
   }else{
-    spdlog::info("Time delay relative to server {} is {}",
-		 m_host_dst, delta);
+    spdlog::info("[{}] Time delay relative to server {} is {}",
+		 get_name(), m_host_dst, delta);
   }
 
   m_tnext_adj = get_time() + (long long) m_adjust_intvl * SEC;
-  mode = RCV;
+  mode = SLP;
   if(m_verb){
+    spdlog::info("[{}] Delta fixed for id {} at {}.",
+		 get_name(), m_trpkt.id, m_trpkt.tc2);
     cout << "Fix the time id: " << m_trpkt.id << " delta: " << delta << endl;
     cout << "Next request is set as Tnext: " <<  m_tnext_adj << endl;
-    cout << "Move to RCV mode." << endl;
+    cout << "Move to SLP mode." << endl;
   }
   return true;
 }
@@ -384,8 +387,13 @@ bool f_time_sync::stfix()
 // SLP -> TRN
 bool f_time_sync::stslp()
 {
-  if(m_tnext_adj < get_time())
+  if(m_tnext_adj < get_time()){
     mode = TRN;
+    if(m_verb){
+      spdlog::info("Current time {} > scheduled time {}. State changed to TRN"
+		   , get_time(), m_tnext_adj);
+    }
+  }
   
   return true;
 }
