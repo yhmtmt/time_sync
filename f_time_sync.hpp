@@ -96,6 +96,9 @@ protected:
   unsigned short m_port_dst;   // Server's port (in client mode)
   unsigned short m_port;       // Server's port (in server mode)
 
+  c_log log;
+  bool replay;
+  
   SOCKET m_sock;
   socklen_t m_sz_rep;          // Size of client address object
   sockaddr_in m_sock_addr_snd;

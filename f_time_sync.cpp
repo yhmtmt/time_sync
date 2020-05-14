@@ -53,7 +53,8 @@ f_time_sync::f_time_sync(const char * name): f_base(name),
 					     m_verb(false),
 					     mode(RCV), m_adjust_intvl(10),
 					     m_tnext_adj(0),
-					     m_max_rcv_wait_count(1000)
+					     m_max_rcv_wait_count(1000),
+					     replay(false)
 {
   m_host_dst[0] = '\0';
   register_fpar("verb", &m_verb, "Verbose for debug.");
@@ -66,10 +67,31 @@ f_time_sync::f_time_sync(const char * name): f_base(name),
 		"Wait count for recieving reply packet.");
   register_fpar("ch_time_sync", (ch_base**)&m_ch_time_sync,
 		typeid(ch_time_sync).name(), "Time synchronization channel");
+  register_fpar("replay", &replay, "Replay flag");
 }
 
 bool f_time_sync::init_run()
-{
+{  
+  if(replay){
+    if(!m_ch_time_sync){
+      spdlog::error("[{}] Replay mode requires channel connection.");
+      return false;
+    }
+    if(!log.init(f_base::get_data_path(), get_name(), replay)){
+      spdlog::error("[{}] Failed to open log file.", get_name());
+      return false;
+    }
+    return true;
+  }else{
+    if(m_host_dst[0] != '\0' && m_ch_time_sync){
+      if(!log.init(f_base::get_data_path(), get_name(), replay)){
+	spdlog::error("[{}] Failed to open log file.", get_name());
+	return false;
+      }
+    }
+  }
+  
+  
   m_sock = socket(AF_INET, SOCK_DGRAM, 0);	
   if(set_sock_nb(m_sock) != 0)
     return false;
@@ -106,7 +128,18 @@ void f_time_sync::destroy_run()
 }
 
 bool f_time_sync::proc()
-{ 
+{
+  if(replay && m_ch_time_sync != nullptr){
+    long long t, delta;
+    size_t sz;
+    if(!log.read(t, (unsigned char*)&delta, sz)){
+      spdlog::error("[{}] Failed to get delta.", get_name());
+      return false;
+    }
+    m_ch_time_sync->set_time_delta(t, delta);    
+    return true;
+  }
+  
   // client
   // TRN->WAI->
   //    ->FIX->SLP->TRN
@@ -363,7 +396,9 @@ bool f_time_sync::stfix()
   long long delta = m_trpkt.calc_delta();
 
   if(m_ch_time_sync){
-    m_ch_time_sync->set_time_delta(get_time(), delta);
+    long long t = get_time();
+    m_ch_time_sync->set_time_delta(t, delta);
+    log.write(t, (unsigned char*)&delta, sizeof(delta)); 
   }else{
     spdlog::info("[{}] Time delay relative to server {} is {}",
 		 get_name(), m_host_dst, delta);
