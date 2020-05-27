@@ -131,7 +131,7 @@ bool f_time_sync::proc()
 {
   if(replay && m_ch_time_sync != nullptr){
     long long t, delta;
-    size_t sz;
+    unsigned int sz;
     if(!log.read(t, (unsigned char*)&delta, sz)){
       spdlog::error("[{}] Failed to get delta.", get_name());
       return false;
